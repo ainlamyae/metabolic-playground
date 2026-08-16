@@ -27,6 +27,38 @@ Works for gaining too: a target above your current mass needs a negative Δm (a 
 
 The full formula sheet, with sources, is shown at the top of the page.
 
+## The body as a system
+
+Treat the body as a control system with one input, one state variable, and a feedback loop — not a one-way pipe from food to weight.
+
+```
+                         ┌───────────────────────────────┐
+                         │        BODY  (state: m)        │
+   Eᵢₙ  ─────────────────▶   BMR(m) + Eₐ(m,τ) + TEF(Eᵢₙ)   │────▶  Δm  ────▶  m(t)
+  (input, kcal/day,             (three draws on the           (output,           │
+   the one lever you           same input, all functions      change in         │
+   actually control)            of the current state)         body mass)        │
+                         └───────────────────────────────┘                     │
+                                        ▲                                       │
+                                        └──────────── feedback: m(t) ───────────┘
+```
+
+- **Input** — daily caloric intake, `Eᵢₙ`. The only quantity actually set from outside the loop.
+- **State** — body mass, `m(t)`, smoothed to `m̄ = (1/7)·Σm(t−i)` over the trailing week, since a single day's scale reading carries water and glycogen noise, not clean mass change.
+- **Draws on the input** — three sinks that consume `Eᵢₙ` before any surplus or deficit shows up as `Δm`:
+  - `BMR` — the baseline draw, and the term that closes the loop: it's a function of `m` itself (directly under Mifflin-St Jeor, via `LBM` under Katch-McArdle). Burn depends on mass, and mass changes because of the burn — that dependency is the feedback.
+  - `Eₐ` — activity burn, an externally-set gain (`τ`, minutes) applied on top of the mass-dependent `MET` term.
+  - `TEF` — a fixed fraction `f` of whatever `Eᵢₙ` turns out to be, solved for rather than added, since it scales with the very input it draws from.
+- **Error signal** — the daily energy balance, `Eᵢₙ − (BMR + Eₐ + TEF)`, integrated through the energy density of tissue (`ρ`) into `Δm`.
+
+Because `BMR` and `Eₐ` are affine in `m` (`M(m) = A + B·m`), holding `Eᵢₙ` fixed gives the loop a single equilibrium, `m∞ = (Eᵢₙ − A)/B`, and mass decays toward it exponentially rather than linearly — `m(t) = m∞ + (m−m∞)·e^(−Bt/ρ)`. As `m` falls toward `m∞`, the deficit `Eᵢₙ − M(m)` shrinks in lockstep, which is what makes it decay instead of running straight to zero: a first-order negative-feedback system, self-damping by construction.
+
+A second, slower feedback path fights the first one: metabolic adaptation. `BMR_a(t) = BMR × (1 − λt)` drags the baseline draw down as time on the deficit accumulates (capped to `λt_max ≈ 10–15%` by week 10–12), pulling `A` and `B` down together and dragging the true equilibrium `m∞_a` above the naively-computed `m∞`. A plan built on the fast loop alone will undershoot its own forecast — the gap between `m∞` and `m∞_a` is exactly the overshoot the adaptation model predicts.
+
+Under a pinned fat-loss percentage (`Δm%`) instead of a fixed `Eᵢₙ`, the loop is closed differently — intake is re-derived from the current mass every period rather than held constant — so there's no equilibrium at all, just proportional decay: `m(t) = m·(1 − Δm%/100)^(t/7)`.
+
+`LBM` and the protein band (`P_min`, `P_max`) sit outside this loop — they scale with lean mass, not with the energy-balance state, and constrain the *composition* of the input rather than its size.
+
 ## Running it
 
 A static page with no build step and no backend — clone it and open `index.html`, or serve the folder with anything that serves static files, e.g.:

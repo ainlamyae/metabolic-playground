@@ -16,7 +16,7 @@ textarea {
     --color-primary: #3b82f6;
     --color-primary-hover: #2563eb;
     --color-danger: #dc2626;
-    --color-bg: #f5f7fb;
+    --color-bg: #ffffff;
     --color-surface: #ffffff;
     --color-border: #e5e7eb;
     --color-text: #1f2937;
@@ -28,17 +28,6 @@ textarea {
     --input-font-size: 16px;
 }
 
-@media (prefers-color-scheme: dark) {
-    :root {
-        color-scheme: dark;
-        --color-bg: #0f172a;
-        --color-surface: #1e293b;
-        --color-border: #334155;
-        --color-text: #e2e8f0;
-        --color-text-muted: #94a3b8;
-        --color-heading: #93c5fd;
-    }
-}
 
 body {
     background: var(--color-bg);
@@ -60,6 +49,22 @@ body {
 .page-header h1 {
     font-size: 1.4rem;
     color: var(--color-heading);
+}
+
+.page-footer {
+    margin-top: 1.5rem;
+    text-align: center;
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+}
+
+.page-footer a {
+    color: var(--color-primary);
+    text-decoration: none;
+}
+
+.page-footer a:hover {
+    text-decoration: underline;
 }
 
 .sheet {
