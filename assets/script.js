@@ -470,7 +470,13 @@ Lean body mass — Boer (1984)
     LBM  =  0.252×m  +  0.473×h  −  48.3      (♀)
 Daily protein band, scaled to lean mass
     P_min =  p_min × LBM
-    P_max =  p_max × LBM`;
+    P_max =  p_max × LBM
+Skeletal muscle mass — the fraction of LBM that actually stores glycogen
+    m_musc =  s × LBM
+Glycogen store, from muscle mass
+    m_gly  =  g_musc × m_musc  +  g_liver
+Glycogen-bound water — the swing glycogen alone accounts for, not fat
+    ΔM_gly =  m_gly × (1 + r) / 1000`;
 
 function formulaFieldValue(field) {
   return getSetting(field.key, null) ?? field.fallback();
@@ -579,6 +585,12 @@ function renderFormulaSubstituted(rows, plan = null) {
   } catch (err) {
     console.error('Protein band failed to render', err);
   }
+  let glycogenRows = [];
+  try {
+    glycogenRows = renderGlycogenSwingField();
+  } catch (err) {
+    console.error('Glycogen swing failed to render', err);
+  }
   let correctionRows = [];
   try {
     correctionRows = renderCorrectionFields(plan);
@@ -586,7 +598,7 @@ function renderFormulaSubstituted(rows, plan = null) {
     console.error('Correction terms failed to render', err);
   }
 
-  [...(rows ?? []), ...bmiRows, ...pctRows, ...correctionRows, ...proteinRows].forEach(([label, value]) => {
+  [...(rows ?? []), ...bmiRows, ...pctRows, ...correctionRows, ...proteinRows, ...glycogenRows].forEach(([label, value]) => {
     const p = document.createElement('p');
     const strong = document.createElement('strong');
     strong.textContent = `${label}: `;
@@ -714,6 +726,70 @@ function renderProteinFields() {
     ['LBM', `${coefficients}  =  ${lbmKg} kg`],
     ['P_min', `${perKgMin} × ${lbmKg}  =  ${minG} g/day`],
     ['P_max', `${perKgMax} × ${lbmKg}  =  ${maxG} g/day`],
+  ];
+}
+
+// m_musc, m_gly and the glycogen+water swing they imply, from whatever m, h and the four
+// glycogen knobs currently read — or null when any of them is missing. Independent of
+// "Solve for" like the protein band above: no calorie identity involves it, it's purely
+// the explanation for why m and m̄ disagree day to day.
+//
+// LBM drives it rather than body mass directly, same reasoning Katch-McArdle and the
+// protein band already use here: glycogen is stored in muscle (and the liver, which
+// doesn't scale with a lifter's muscle mass at all), not in fat, so two people at the
+// same body mass but different body composition don't carry the same glycogen store.
+// But LBM alone overstates it: skeletal muscle is only about 40-50% of LBM — the rest is
+// water, organs, skin and bone, none of which store meaningful glycogen — so applying a
+// published muscle-TISSUE glycogen density (g/kg wet muscle) straight to LBM comes out
+// roughly double. s cuts LBM down to that muscle share first, so g_musc can be the real
+// muscle-tissue figure instead of a diluted per-LBM one.
+function readGlycogenSwingFormula() {
+  const bodyMassKg = formulaBodyMassKg();
+  const heightCm = formulaNumber('formula-height');
+  const sex = document.getElementById('formula-sex').value;
+  const skeletalFrac = formulaNumber('formula-glycogen-skeletal-frac');
+  const gPerKgMuscle = formulaNumber('formula-glycogen-per-kg-muscle');
+  const liverG = formulaNumber('formula-glycogen-liver');
+  const waterRatio = formulaNumber('formula-glycogen-water-ratio');
+  if (bodyMassKg === null || heightCm === null || skeletalFrac === null || gPerKgMuscle === null
+    || liverG === null || waterRatio === null) return null;
+
+  const rawLbm = boerLeanBodyMassKg(bodyMassKg, heightCm, sex);
+  if (!Number.isFinite(rawLbm) || rawLbm <= 0) return null;
+  // Rounded to 0.1 kg before it's used further, same as readProteinFormula — otherwise
+  // the trace's `s × LBM = m_musc` line would show a rounded LBM that doesn't actually
+  // multiply out to the muscle mass figure beside it.
+  const lbmKg = Math.round(rawLbm * 10) / 10;
+  // s is a share of LBM, not of m̄: it's a fat-free-mass ratio (skeletal muscle vs. the
+  // rest of LBM), and m̄ still carries the fat LBM has already had stripped out.
+  const muscleKg = Math.round((lbmKg * (skeletalFrac / 100)) * 10) / 10;
+  if (muscleKg <= 0) return null;
+
+  const glycogenG = Math.round(gPerKgMuscle * muscleKg + liverG);
+  return {
+    lbmKg, skeletalFrac, muscleKg, gPerKgMuscle, liverG, glycogenG,
+    waterRatio, swingKg: Math.round((glycogenG * (1 + waterRatio)) / 100) / 10,
+  };
+}
+
+// The m_musc, m_gly and ΔM_gly boxes and their trace rows — always as a pair per box,
+// same rule every other computed field here follows. A dash in all three when an input
+// is missing.
+function renderGlycogenSwingField() {
+  const swing = readGlycogenSwingFormula();
+  if (swing === null) {
+    ['formula-glycogen-muscle', 'formula-glycogen-g', 'formula-glycogen-swing'].forEach((id) => setComputedField(id, '—'));
+    return [];
+  }
+
+  const { lbmKg, skeletalFrac, muscleKg, gPerKgMuscle, liverG, glycogenG, waterRatio, swingKg } = swing;
+  setComputedField('formula-glycogen-muscle', String(muscleKg));
+  setComputedField('formula-glycogen-g', String(glycogenG));
+  setComputedField('formula-glycogen-swing', String(swingKg));
+  return [
+    ['m_musc', `${skeletalFrac}% × ${lbmKg}  =  ${muscleKg} kg`],
+    ['m_gly', `${gPerKgMuscle} × ${muscleKg} + ${liverG}  =  ${glycogenG} g`],
+    ['ΔM_gly', `${glycogenG} × (1 + ${waterRatio}) / 1000  =  ${swingKg} kg`],
   ];
 }
 
@@ -1210,7 +1286,9 @@ function wireSheet() {
   [...FORMULA_FIELDS.map((f) => f.inputId).filter((id) => id !== 'formula-weekly-loss' && id !== 'formula-target'),
     ...PROTEIN_FORMULA_FIELDS.map((f) => f.inputId),
     ...ADAPT_FORMULA_FIELDS.map((f) => f.inputId),
-    'formula-body-mass-smooth', 'formula-height', 'formula-age'].forEach((id) => {
+    'formula-body-mass-smooth', 'formula-height', 'formula-age',
+    'formula-glycogen-skeletal-frac', 'formula-glycogen-per-kg-muscle', 'formula-glycogen-liver',
+    'formula-glycogen-water-ratio'].forEach((id) => {
     document.getElementById(id).addEventListener('input', renderFormulaPreview);
   });
   document.getElementById('formula-sex').addEventListener('change', renderFormulaPreview);
@@ -1272,4 +1350,5 @@ function wireSheet() {
 document.addEventListener('DOMContentLoaded', () => {
   wireSheet();
   initSheet();
+  document.getElementById('footer-year').textContent = new Date().getFullYear();
 });

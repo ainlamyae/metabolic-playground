@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Metabolic Playground</title>
 <meta name="description" content="Interactive calculator for the metabolic math behind weight management — BMR (Mifflin-St Jeor, Katch-McArdle), activity burn, thermic effect of food, and lean-mass-scaled protein targets. Solve for calories, target body mass, activity, or fat-loss rate from one linked set of equations.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
@@ -226,6 +227,48 @@
                 <input type="text" id="formula-protein-max" inputmode="decimal" readonly>
                 <span class="formula-unit">g/day</span>
             </label>
+            <label class="formula-row" title="Skeletal muscle, as a direct share of LBM — not of m̄, since it's a fat-free-mass ratio and m̄ still carries the fat. Skeletal muscle runs roughly 40-50% of lean body mass; the rest of LBM is water, organs, skin and bone, none of which store meaningful glycogen. Higher toward 50% for a more muscular frame, lower toward 40% otherwise.">
+                <span class="formula-sym">s</span>
+                <span class="formula-name">skeletal muscle, share of lean mass</span>
+                <input type="text" id="formula-glycogen-skeletal-frac" inputmode="decimal" value="45">
+                <span class="formula-unit">% of LBM</span>
+            </label>
+            <label class="formula-row" title="LBM × s — the actual skeletal muscle mass the glycogen density below applies to, rather than all of LBM (which also counts water, organs, skin and bone).">
+                <span class="formula-sym">m_musc</span>
+                <span class="formula-name">skeletal muscle mass</span>
+                <input type="text" id="formula-glycogen-muscle" inputmode="decimal" readonly>
+                <span class="formula-unit">kg</span>
+            </label>
+            <label class="formula-row" title="Grams of glycogen per kg of actual muscle tissue — resting muscle glycogen runs roughly 13-15 g/kg wet weight (about 70-85 mmol/kg). This is the muscle-tissue density itself, not diluted across LBM, which is why it's applied to m_musc above rather than to LBM directly.">
+                <span class="formula-sym">g_musc</span>
+                <span class="formula-name">glycogen per kg of muscle mass</span>
+                <input type="text" id="formula-glycogen-per-kg-muscle" inputmode="decimal" value="14">
+                <span class="formula-unit">g/kg muscle</span>
+            </label>
+            <label class="formula-row" title="The liver's own glycogen reserve — roughly constant across adults regardless of muscle mass, commonly cited around 100g.">
+                <span class="formula-sym">g_liver</span>
+                <span class="formula-name">liver glycogen reserve</span>
+                <input type="text" id="formula-glycogen-liver" inputmode="decimal" value="100">
+                <span class="formula-unit">g</span>
+            </label>
+            <label class="formula-row" title="g_musc × m_musc + g_liver. Not editable directly — tune the coefficients above if this doesn't match what you observe.">
+                <span class="formula-sym">m_gly</span>
+                <span class="formula-name">glycogen store, from muscle mass</span>
+                <input type="text" id="formula-glycogen-g" inputmode="decimal" readonly>
+                <span class="formula-unit">g</span>
+            </label>
+            <label class="formula-row" title="Grams of water glycogen holds onto per gram of itself — commonly cited as 3–4. Tune this to whatever ratio makes ΔM_gly below match what you actually see on the scale.">
+                <span class="formula-sym">r</span>
+                <span class="formula-name">water bound per gram of glycogen</span>
+                <input type="text" id="formula-glycogen-water-ratio" inputmode="decimal" value="3">
+                <span class="formula-unit">g H2O / g glycogen</span>
+            </label>
+            <label class="formula-row" title="ΔM_gly = m_gly × (1 + r) — the scale swing glycogen and its bound water can account for on their own. A day-to-day move up to about this size is water and glycogen, not fat; anything consistently larger than it, held over more than a day or two, is the real signal.">
+                <span class="formula-sym">ΔM_gly</span>
+                <span class="formula-name">glycogen + water swing</span>
+                <input type="text" id="formula-glycogen-swing" inputmode="decimal" readonly>
+                <span class="formula-unit">kg</span>
+            </label>
         </div>
 
         <div id="formula-substituted" class="formula-substituted"></div>
@@ -236,11 +279,18 @@
             <button type="button" id="formula-reset-btn" class="btn">Reset</button>
         </div>
     </div>
-
-    <footer class="page-footer">
-        <p>© 2026 All rights reserved. • Designed &amp; Developed by <a href="https://ainlamyae.github.io/" target="_blank" rel="noopener">ALI</a></p>
-    </footer>
 </div>
+
+<footer class="page-footer">
+    <p>
+        &copy; <span id="footer-year"></span> All rights reserved.
+        <span class="footer-divider">•</span>
+        Designed &amp; Developed by
+        <a href="https://ainlamyae.github.io" target="_blank" rel="noopener">
+            ALI
+        </a>
+    </p>
+</footer>
 
 <script src="assets/script.js"></script>
 </body>

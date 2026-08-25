@@ -24,6 +24,7 @@ Works for gaining too: a target above your current mass needs a negative Δm (a 
 - The target trajectory as exponential decay toward an equilibrium mass, `m(t) = m∞ + (m − m∞)·e^(−B·t/ρ)` — or, under a pinned fat-loss percentage, a proportional journey with no plateau
 - Metabolic adaptation, reported (not planned with) as a BMR correction that grows with time on the diet
 - A daily protein band scaled to lean mass rather than total mass
+- A glycogen + water swing (`ΔM_gly`), from the skeletal-muscle share of lean mass — the day-to-day scale wobble glycogen and its bound water can account for on their own, not fat
 
 The full formula sheet, with sources, is shown at the top of the page.
 
