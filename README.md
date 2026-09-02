@@ -1,6 +1,6 @@
 # Metabolic Playground
 
-Interactive calculator for the metabolic math behind weight management — BMR (Mifflin-St Jeor, Katch-McArdle), activity burn, thermic effect of food, and lean-mass-scaled protein targets. Solve for calories, target body mass, activity, or fat-loss rate from one linked set of equations.
+Interactive calculator for the metabolic math behind weight management — BMR (Mifflin-St Jeor, Katch-McArdle), activity burn, thermic effect of food, and lean-mass-scaled protein, fiber and fat targets. Solve for calories, target body mass, activity, or fat-loss rate from one linked set of equations.
 
 Pick a "Solve for" mode and the rest of the sheet updates live as you type, with the full substituted arithmetic — every symbol replaced by the figure actually used — shown below it. Nothing is saved: reload the page, or hit Reset, and it goes back to the default profile.
 
@@ -24,6 +24,8 @@ Works for gaining too: a target above your current mass needs a negative Δm (a 
 - The target trajectory as exponential decay toward an equilibrium mass, `m(t) = m∞ + (m − m∞)·e^(−B·t/ρ)` — or, under a pinned fat-loss percentage, a proportional journey with no plateau
 - Metabolic adaptation, reported (not planned with) as a BMR correction that grows with time on the diet
 - A daily protein band scaled to lean mass rather than total mass
+- A daily fiber band, floor scaled to intake (14 g per 1,000 kcal) and ceiling scaled to body weight (0.5 g/kg)
+- A daily fat band from the IOM's 20-35% Acceptable Macronutrient Distribution Range, both ends a share of `Eᵢₙ`
 - A glycogen + water swing (`ΔM_gly`), from the skeletal-muscle share of lean mass — the day-to-day scale wobble glycogen and its bound water can account for on their own, not fat
 
 The full formula sheet, with sources, is shown at the top of the page.
@@ -58,7 +60,7 @@ A second, slower feedback path fights the first one: metabolic adaptation. `BMR_
 
 Under a pinned fat-loss percentage (`Δm%`) instead of a fixed `Eᵢₙ`, the loop is closed differently — intake is re-derived from the current mass every period rather than held constant — so there's no equilibrium at all, just proportional decay: `m(t) = m·(1 − Δm%/100)^(t/7)`.
 
-`LBM` and the protein band (`P_min`, `P_max`) sit outside this loop — they scale with lean mass, not with the energy-balance state, and constrain the *composition* of the input rather than its size.
+`LBM` and the protein, fiber and fat bands (`P_min`/`P_max`, `F_min`/`F_max`, `G_min`/`G_max`) sit outside this loop — they scale with lean mass or with `Eᵢₙ` itself, not with the energy-balance state, and constrain the *composition* of the input rather than its size.
 
 ## Running it
 

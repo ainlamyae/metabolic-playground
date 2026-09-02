@@ -37,6 +37,25 @@ const ACTIVITY_TARGET_MIN_DEFAULT = 100;
 const PROTEIN_G_PER_KG_LBM_MIN_DEFAULT = 1.8;
 const PROTEIN_G_PER_KG_LBM_MAX_DEFAULT = 2.2;
 
+// The fiber band's two coefficients. 14 g/1000 kcal is the USDA/Dietary Guidelines for
+// Americans rule of thumb (derived from the ~25g/2000kcal adult reference intake); 0.5 g/kg
+// body weight is a common upper-bound heuristic so the ceiling scales with the person rather
+// than staying a flat number regardless of size.
+const FIBER_G_PER_1000_KCAL_MIN_DEFAULT = 14;
+const FIBER_G_PER_KG_MAX_DEFAULT = 0.5;
+
+// The fat band's two coefficients — 20-35% of total energy from fat is the Institute of
+// Medicine's Acceptable Macronutrient Distribution Range for adults (Dietary Reference
+// Intakes for Energy, Carbohydrate, Fiber, Fat, Fatty Acids, Cholesterol, Protein, and Amino
+// Acids, 2005), the same range the USDA Dietary Guidelines for Americans carries forward.
+// Both ends scale off Eᵢₙ (percent of intake calories), unlike fiber's floor/ceiling on two
+// different bases, since that's how the AMDR itself is defined.
+const FAT_PCT_OF_KCAL_MIN_DEFAULT = 20;
+const FAT_PCT_OF_KCAL_MAX_DEFAULT = 35;
+// Fat's fixed energy density (Atwater) — grams per kcal, not a personal parameter, so it's a
+// plain constant rather than an overridable setting the way the two percentages above are.
+const KCAL_PER_G_FAT = 9;
+
 // Intensity assumed for the activity target (3.0 walking, 5.0 compound
 // lifting, 7.0 jogging).
 const ACTIVITY_MET_FALLBACK = 3.5;
@@ -347,6 +366,22 @@ const PROTEIN_FORMULA_FIELDS = [
   { key: 'PROTEIN_G_PER_KG_LBM_MAX', inputId: 'formula-protein-per-kg-max', fallback: () => PROTEIN_G_PER_KG_LBM_MAX_DEFAULT },
 ];
 
+// The fiber band's two coefficients, kept out of FORMULA_FIELDS for the same reason as
+// PROTEIN_FORMULA_FIELDS: fiber feeds no calorie identity, so a blank one should only stop
+// fiber from being computed, not the target.
+const FIBER_FORMULA_FIELDS = [
+  { key: 'FIBER_G_PER_1000_KCAL_MIN', inputId: 'formula-fiber-per-1000kcal-min', fallback: () => FIBER_G_PER_1000_KCAL_MIN_DEFAULT },
+  { key: 'FIBER_G_PER_KG_MAX', inputId: 'formula-fiber-per-kg-max', fallback: () => FIBER_G_PER_KG_MAX_DEFAULT },
+];
+
+// The fat band's two coefficients, kept out of FORMULA_FIELDS for the same reason as
+// FIBER_FORMULA_FIELDS: fat feeds no calorie identity, so a blank one should only stop fat
+// from being computed, not the target.
+const FAT_FORMULA_FIELDS = [
+  { key: 'FAT_PCT_OF_KCAL_MIN', inputId: 'formula-fat-pct-min', fallback: () => FAT_PCT_OF_KCAL_MIN_DEFAULT },
+  { key: 'FAT_PCT_OF_KCAL_MAX', inputId: 'formula-fat-pct-max', fallback: () => FAT_PCT_OF_KCAL_MAX_DEFAULT },
+];
+
 const FORMULA_SOLVE_FIELD_ID = {
   EIN: 'formula-ein',
   TARGET_MASS: 'formula-target',
@@ -433,10 +468,13 @@ function applySolveForMode(mode) {
 
 const FORMULA_EXPRESSION = `Smoothing the scale — daily weight carries water and glycogen, m(t) means clean mass
     m̄    =  (1/7) × Σ m(t−i),  i = 0…6
-Resting metabolic rate — Mifflin-St Jeor (1990)
-    BMR  =  10×m  +  6.25×h  −  5×a  +  σ
+Lean body mass — Boer (1984)
+    LBM  =  0.407×m  +  0.267×h  −  19.2      (♂)
+    LBM  =  0.252×m  +  0.473×h  −  48.3      (♀)
 Resting metabolic rate — Katch-McArdle (1996), from lean mass instead of age/sex
     BMR  =  370  +  21.6×LBM
+Resting metabolic rate — Mifflin-St Jeor (1990)
+    BMR  =  10×m  +  6.25×h  −  5×a  +  σ
 Activity burn at the daily target — ACSM metabolic equation
     Eₐ   =  MET × m × τ × κ / ε
 Weekly fat loss as a share of body mass — 0.5–1%/week band
@@ -465,18 +503,21 @@ Proportional journey instead, when Δm% is what's held — no plateau, so no m�
 Metabolic adaptation — BMR sags faster than the lost mass alone predicts
     BMR_a(t) = BMR × (1 − λt),  λt capped at λt_max ≈ 10–15% by week 10–12
     m∞_a =  (Eᵢₙ − A_a) / B_a,  the BMR half of A and B scaled by (1 − λt)
-Lean body mass — Boer (1984)
-    LBM  =  0.407×m  +  0.267×h  −  19.2      (♂)
-    LBM  =  0.252×m  +  0.473×h  −  48.3      (♀)
-Daily protein band, scaled to lean mass
-    P_min =  p_min × LBM
-    P_max =  p_max × LBM
 Skeletal muscle mass — the fraction of LBM that actually stores glycogen
     m_musc =  s × LBM
 Glycogen store, from muscle mass
     m_gly  =  g_musc × m_musc  +  g_liver
 Glycogen-bound water — the swing glycogen alone accounts for, not fat
-    ΔM_gly =  m_gly × (1 + r) / 1000`;
+    ΔM_gly =  m_gly × (1 + r) / 1000
+Daily protein band, scaled to lean mass
+    P_min =  p_min × LBM
+    P_max =  p_max × LBM
+Fiber band — a floor from daily intake, a ceiling from body weight
+    F_min =  f_min × (Eᵢₙ / 1000)
+    F_max =  f_max × m
+Fat band — both ends a share of intake, 20-35% AMDR
+    G_min =  (k_min/100 × Eᵢₙ) / 9
+    G_max =  (k_max/100 × Eᵢₙ) / 9`;
 
 function formulaFieldValue(field) {
   return getSetting(field.key, null) ?? field.fallback();
@@ -564,26 +605,41 @@ function readFormulaInputs() {
 }
 
 // The formula with every symbol replaced by the figure actually used.
+//
+// Δm%, TEF and BMI_g are NOT read here: each sits inside `rows` itself, appended by the
+// mode that built it, at the spot the legend puts it (Δm% by D, TEF by Eᵢₙ, BMI_g by m_g),
+// rather than tacked on after everything mode-specific is done.
 function renderFormulaSubstituted(rows, plan = null) {
   const el = document.getElementById('formula-substituted');
   el.innerHTML = '';
-  let pctRows = [];
+  let lbmRows = [];
   try {
-    pctRows = renderWeeklyLossPctField();
+    lbmRows = renderLbmField();
   } catch (err) {
-    console.error('Weekly fat-loss percentage failed to render', err);
-  }
-  let bmiRows = [];
-  try {
-    bmiRows = renderTargetBmiField();
-  } catch (err) {
-    console.error('Target BMI failed to render', err);
+    console.error('Lean body mass failed to render', err);
   }
   let proteinRows = [];
   try {
     proteinRows = renderProteinFields();
   } catch (err) {
     console.error('Protein band failed to render', err);
+  }
+  // Independent of the protein block above — reads m̄ and Eᵢₙ, not LBM — but guarded
+  // separately for the same reason every block here is: one throwing can't take the others
+  // down with it.
+  let fiberRows = [];
+  try {
+    fiberRows = renderFiberFields();
+  } catch (err) {
+    console.error('Fiber band failed to render', err);
+  }
+  // Independent of the fiber block above too — reads only Eᵢₙ, no body mass — but guarded
+  // separately for the same reason.
+  let fatRows = [];
+  try {
+    fatRows = renderFatFields();
+  } catch (err) {
+    console.error('Fat band failed to render', err);
   }
   let glycogenRows = [];
   try {
@@ -598,7 +654,11 @@ function renderFormulaSubstituted(rows, plan = null) {
     console.error('Correction terms failed to render', err);
   }
 
-  [...(rows ?? []), ...bmiRows, ...pctRows, ...correctionRows, ...proteinRows, ...glycogenRows].forEach(([label, value]) => {
+  // LBM leads (it sits with the profile, ahead of everything `rows` itself starts with),
+  // then `rows` — which carries Δm%, TEF and BMI_g inline, at the legend's own positions —
+  // then the adaptation pair, then glycogen, protein, fiber and fat: the same order the
+  // legend lists them in.
+  [...lbmRows, ...(rows ?? []), ...correctionRows, ...glycogenRows, ...proteinRows, ...fiberRows, ...fatRows].forEach(([label, value]) => {
     const p = document.createElement('p');
     const strong = document.createElement('strong');
     strong.textContent = `${label}: `;
@@ -706,26 +766,125 @@ function readProteinFormula() {
   };
 }
 
-function renderProteinFields() {
+// The LBM box and its trace row alone — split out from the protein band below so it can
+// sit with the profile (m̄/h/σ/BMR) at the top of the sheet, ahead of the calorie solve,
+// while still sharing the one Boer read every other lean-mass consumer here (protein,
+// glycogen) uses.
+function renderLbmField() {
   const protein = readProteinFormula();
 
   if (protein === null) {
-    ['formula-lbm', 'formula-protein-min', 'formula-protein-max'].forEach((id) => setComputedField(id, '—'));
+    setComputedField('formula-lbm', '—');
     return [];
   }
 
-  const { lbmKg, perKgMin, perKgMax, minG, maxG, bodyMassKg, heightCm, sex } = protein;
+  const { lbmKg, bodyMassKg, heightCm, sex } = protein;
   setComputedField('formula-lbm', String(lbmKg));
-  setComputedField('formula-protein-min', String(minG));
-  setComputedField('formula-protein-max', String(maxG));
 
   const coefficients = sex === 'male'
     ? `0.407 × ${bodyMassKg} + 0.267 × ${heightCm} − 19.2`
     : `0.252 × ${bodyMassKg} + 0.473 × ${heightCm} − 48.3`;
+  return [['LBM', `${coefficients}  =  ${lbmKg} kg`]];
+}
+
+function renderProteinFields() {
+  const protein = readProteinFormula();
+
+  if (protein === null) {
+    ['formula-protein-min', 'formula-protein-max'].forEach((id) => setComputedField(id, '—'));
+    return [];
+  }
+
+  const { lbmKg, perKgMin, perKgMax, minG, maxG } = protein;
+  setComputedField('formula-protein-min', String(minG));
+  setComputedField('formula-protein-max', String(maxG));
+
   return [
-    ['LBM', `${coefficients}  =  ${lbmKg} kg`],
     ['P_min', `${perKgMin} × ${lbmKg}  =  ${minG} g/day`],
     ['P_max', `${perKgMax} × ${lbmKg}  =  ${maxG} g/day`],
+  ];
+}
+
+// The fiber band: a floor scaled to how much you eat (14 g/1000 kcal, the USDA/DGA rule of
+// thumb) and a ceiling scaled to body weight (0.5 g/kg) — two different bases, unlike
+// protein's single LBM, so neither end rides on a box the other computes.
+//
+// Reads formula-ein directly rather than re-deriving it: by the time renderFiberFields runs
+// (from renderFormulaSubstituted, after the calorie half of the sheet), that box already
+// holds this render's Eᵢₙ — typed or solved, in every mode — so this is the one read that
+// can't disagree with what the sheet just showed.
+function readFiberFormula() {
+  const bodyMassKg = formulaBodyMassKg();
+  const einKcal = formulaNumber('formula-ein');
+  const perKcalMin = formulaNumber('formula-fiber-per-1000kcal-min');
+  const perKgMax = formulaNumber('formula-fiber-per-kg-max');
+  if (bodyMassKg === null || einKcal === null || perKcalMin === null || perKgMax === null) return null;
+
+  return {
+    bodyMassKg, einKcal, perKcalMin, perKgMax,
+    minG: Math.round(perKcalMin * (einKcal / 1000)),
+    maxG: Math.round(perKgMax * bodyMassKg),
+  };
+}
+
+// The two fiber boxes and their trace rows — same pairing and same dash-on-missing-input
+// convention renderProteinFields uses.
+function renderFiberFields() {
+  const fiber = readFiberFormula();
+
+  if (fiber === null) {
+    ['formula-fiber-min', 'formula-fiber-max'].forEach((id) => setComputedField(id, '—'));
+    return [];
+  }
+
+  const { bodyMassKg, einKcal, perKcalMin, perKgMax, minG, maxG } = fiber;
+  setComputedField('formula-fiber-min', String(minG));
+  setComputedField('formula-fiber-max', String(maxG));
+
+  return [
+    ['F_min', `${perKcalMin} × (${einKcal} / 1000)  =  ${minG} g/day`],
+    ['F_max', `${perKgMax} × ${bodyMassKg}  =  ${maxG} g/day`],
+  ];
+}
+
+// The fat band: both ends a share of Eᵢₙ (20-35%, the IOM's Acceptable Macronutrient
+// Distribution Range for adults) converted to grams at fat's fixed 9 kcal/g energy density —
+// unlike fiber's two different bases, both k_min and k_max scale off the same Eᵢₙ, since
+// that's how the AMDR itself is defined.
+//
+// Reads formula-ein directly, same reason readFiberFormula does: by the time
+// renderFatFields runs (from renderFormulaSubstituted, after the calorie half of the sheet),
+// that box already holds this render's Eᵢₙ — typed or solved, in every mode.
+function readFatFormula() {
+  const einKcal = formulaNumber('formula-ein');
+  const pctMin = formulaNumber('formula-fat-pct-min');
+  const pctMax = formulaNumber('formula-fat-pct-max');
+  if (einKcal === null || pctMin === null || pctMax === null) return null;
+
+  return {
+    einKcal, pctMin, pctMax,
+    minG: Math.round((pctMin / 100) * einKcal / KCAL_PER_G_FAT),
+    maxG: Math.round((pctMax / 100) * einKcal / KCAL_PER_G_FAT),
+  };
+}
+
+// The two fat boxes and their trace rows — same pairing and same dash-on-missing-input
+// convention renderFiberFields uses.
+function renderFatFields() {
+  const fat = readFatFormula();
+
+  if (fat === null) {
+    ['formula-fat-min', 'formula-fat-max'].forEach((id) => setComputedField(id, '—'));
+    return [];
+  }
+
+  const { einKcal, pctMin, pctMax, minG, maxG } = fat;
+  setComputedField('formula-fat-min', String(minG));
+  setComputedField('formula-fat-max', String(maxG));
+
+  return [
+    ['G_min', `(${pctMin}% × ${einKcal}) / ${KCAL_PER_G_FAT}  =  ${minG} g/day`],
+    ['G_max', `(${pctMax}% × ${einKcal}) / ${KCAL_PER_G_FAT}  =  ${maxG} g/day`],
   ];
 }
 
@@ -930,29 +1089,54 @@ function readAdaptationInputs() {
   };
 }
 
+// The TEF box and its trace row — reads formula-ein and f (formula-tef-pct) directly, same
+// reason readFiberFormula/readFatFormula do: by the time this runs, formula-ein already
+// holds this render's value in every mode, so this can't disagree with what the sheet just
+// showed. Split out from renderCorrectionFields so it can sit right above Eᵢₙ rather than
+// down with the adaptation pair.
+function readTefFormula() {
+  const einKcal = formulaNumber('formula-ein');
+  const tefPct = formulaNumber('formula-tef-pct');
+  if (einKcal === null || tefPct === null) return null;
+  return { einKcal, tefPct, tefKcal: Math.round(einKcal * (tefPct / 100)) };
+}
+
+function renderTefField() {
+  const tef = readTefFormula();
+
+  if (tef === null) {
+    setComputedField('formula-tef', '—');
+    return [];
+  }
+
+  const { einKcal, tefPct, tefKcal } = tef;
+  setComputedField('formula-tef', String(tefKcal));
+  // Only when there is one: at f = 0 the identity is true and empty, and a row reading
+  // "0 × 1163 = 0" is three columns of nothing.
+  if (tefKcal <= 0) return [];
+  return [['TEF', `${tefPct}% × ${einKcal}  =  ${tefKcal} kcal/day`]];
+}
+
 function renderCorrectionFields(plan) {
-  const tefEl = 'formula-tef';
   const bmrEl = 'formula-bmr-adapt';
   const plateauEl = 'formula-plateau-adapt';
   const { pctPerWeek, pctCap } = readAdaptationInputs();
 
   if (plan === null) {
-    ['formula-bmr', 'formula-maintenance', 'formula-deficit', tefEl, bmrEl, plateauEl].forEach((id) => setComputedField(id, '—'));
+    ['formula-bmr', 'formula-activity-kcal', 'formula-maintenance', 'formula-deficit', bmrEl, plateauEl].forEach((id) => setComputedField(id, '—'));
     return [];
   }
 
   const { intakeKcal, coefficients, bmr, activityKcal, deficit, days, journey } = plan;
   const rows = [];
 
+  // Two figures with boxes but no trace rows of their own here — BMR and Eₐ already print
+  // their substituted lines as rows of every mode, D prints its own in all but TARGET_MASS,
+  // and M is just the BMR and Eₐ boxes added together in front of the reader.
   setComputedField('formula-bmr', String(Math.round(bmr)));
+  setComputedField('formula-activity-kcal', String(Math.round(activityKcal)));
   setComputedField('formula-maintenance', String(Math.round(bmr + activityKcal)));
   setComputedField('formula-deficit', String(Math.round(deficit)));
-
-  const tefKcal = Math.round(intakeKcal * (1 - coefficients.tefDivisor));
-  setComputedField(tefEl, String(tefKcal));
-  if (tefKcal > 0) {
-    rows.push(['TEF', `${Math.round((1 - coefficients.tefDivisor) * 1000) / 10}% × ${Math.round(intakeKcal)}  =  ${tefKcal} kcal/day`]);
-  }
 
   if (pctPerWeek === null || pctCap === null || bmr === null) {
     [bmrEl, plateauEl].forEach((id) => setComputedField(id, '—'));
@@ -1043,10 +1227,13 @@ function renderFormulaPreview() {
     const rows = [
       bmrRow,
       ['Eₐ', `${met} × ${bodyMassKg} × ${tau} × ${kappa} / 200  =  ${Math.round(detail.activityKcal)} kcal/day`],
+      ...renderWeeklyLossPctField(),
       ['D', `${detail.weeklyFatLossKg} × 7700 / 7  =  ${Math.round(deficit)} kcal/day`],
+      ...renderTefField(),
       ...formulaEinRows(coefficients, {
         bmr: detail.bmr, activityKcal: detail.activityKcal, deficit, einKcal: detail.kcal,
       }),
+      ...renderTargetBmiField(),
     ];
     if (proj.journey !== 'pct') {
       rows.push(
@@ -1122,8 +1309,11 @@ function renderFormulaPreview() {
     rows.push(
       bmrRow,
       ['Eₐ', `${met} × ${bodyMassKg} × ${tau} × ${kappa} / 200  =  ${Math.round(activityKcal)} kcal/day`],
+      ...renderWeeklyLossPctField(),
       ['D', `${deltaM} × 7700 / 7  =  ${Math.round(deficit)} kcal/day`],
+      ...renderTefField(),
       ...formulaEinRows(coefficients, { bmr, activityKcal, deficit, einKcal: einForDisplay }),
+      ...renderTargetBmiField(),
     );
     if (proj.journey !== 'pct') {
       rows.push(
@@ -1159,9 +1349,12 @@ function renderFormulaPreview() {
     const bRounded = Math.round(b * 100) / 100;
     const eqRounded = Math.round(equilibriumKg * 10) / 10;
     renderFormulaSubstituted([
+      ...renderTefField(),
       ...formulaAffineRows(coefficients, { heightCm, age, sex, met, tau, kappa }),
       ['m∞', `(${Math.round(einKcal)} − ${Math.round(a)}) / ${bRounded}  =  ${eqRounded} kg`],
       ['m_g', `${eqRounded} + (${bodyMassKg} − ${eqRounded}) × e^(−${bRounded}×${days}/7700)  =  ${mGRounded} kg`],
+      ...renderTargetBmiField(),
+      ...renderWeeklyLossPctField(),
     ], (() => {
       const activityKcal = withFormulaOverrides(preview, () => activityTargetKcal(bodyMassKg));
       return {
@@ -1215,12 +1408,15 @@ function renderFormulaPreview() {
       bmrRow,
       ['Eₐ', `${met} × ${bodyMassKg} × ${tau} × ${kappa} / 200  =  ${Math.round(activityKcal)} kcal/day`],
       ...formulaDeficitRows(coefficients, { bmr, activityKcal, einKcal: einForDisplay, deficit }),
+      ...renderTefField(),
       ['Δm', `${Math.round(deficit)} × 7 / 7700  =  ${deltaMSolved} kg/week`],
       ...(proj.journey === 'pct' ? [] : [
         ...formulaAffineRows(coefficients, { heightCm, age, sex, met, tau, kappa }),
         ['m∞', `(${Math.round(einForDisplay)} − ${Math.round(a)}) / ${bRounded}  =  ${eqRounded} kg`],
       ]),
       ...formulaDaysRow(proj, { bodyMassKg, targetKg, weeklyPct, bRounded, eqRounded }),
+      ...renderTargetBmiField(),
+      ...renderWeeklyLossPctField(),
     ], {
       intakeKcal: einForDisplay,
       coefficients,
@@ -1242,10 +1438,13 @@ function renderFormulaPreview() {
     ...formulaAffineRows(coefficients, { heightCm, age, sex, met, tau, kappa }),
     ['m∞', `(${targetKg} − ${bodyMassKg}×${decayRounded}) / (1 − ${decayRounded})  =  ${eqRounded} kg`],
     ['Eᵢₙ', `${Math.round(a)} + ${bRounded} × ${eqRounded}  =  ${Math.round(einForDisplay)} kcal/day`],
+    ...renderTefField(),
     bmrRow,
     ['Eₐ', `${met} × ${bodyMassKg} × ${tau} × ${kappa} / 200  =  ${Math.round(activityKcal)} kcal/day`],
     ...formulaDeficitRows(coefficients, { bmr, activityKcal, einKcal: einForDisplay, deficit }),
     ['Δm', `${Math.round(deficit)} × 7 / 7700  =  ${deltaMSolved} kg/week`],
+    ...renderTargetBmiField(),
+    ...renderWeeklyLossPctField(),
   ], {
     intakeKcal: einForDisplay,
     coefficients,
@@ -1260,7 +1459,7 @@ function renderFormulaPreview() {
 // Fills every box from the default demo profile — what a fresh load, and
 // Reset, both seed the sheet with.
 function loadDefaultInputs() {
-  [...FORMULA_FIELDS, ...PROTEIN_FORMULA_FIELDS, ...ADAPT_FORMULA_FIELDS].forEach((field) => {
+  [...FORMULA_FIELDS, ...PROTEIN_FORMULA_FIELDS, ...FIBER_FORMULA_FIELDS, ...FAT_FORMULA_FIELDS, ...ADAPT_FORMULA_FIELDS].forEach((field) => {
     document.getElementById(field.inputId).value = formulaFieldValue(field);
   });
   document.getElementById('formula-body-mass-smooth').value = DEFAULT_BODY_MASS_KG;
@@ -1285,6 +1484,8 @@ function initSheet() {
 function wireSheet() {
   [...FORMULA_FIELDS.map((f) => f.inputId).filter((id) => id !== 'formula-weekly-loss' && id !== 'formula-target'),
     ...PROTEIN_FORMULA_FIELDS.map((f) => f.inputId),
+    ...FIBER_FORMULA_FIELDS.map((f) => f.inputId),
+    ...FAT_FORMULA_FIELDS.map((f) => f.inputId),
     ...ADAPT_FORMULA_FIELDS.map((f) => f.inputId),
     'formula-body-mass-smooth', 'formula-height', 'formula-age',
     'formula-glycogen-skeletal-frac', 'formula-glycogen-per-kg-muscle', 'formula-glycogen-liver',

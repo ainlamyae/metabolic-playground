@@ -198,6 +198,14 @@ body {
     margin-bottom: 1rem;
 }
 
+/* A plain break between blocks of the sheet — no symbol, box or unit to give it, so a
+   formula-row would sit oddly here. */
+.formula-divider {
+    margin: .6rem 0;
+    border: none;
+    border-top: 1px solid var(--color-border);
+}
+
 /* One variable per line: symbol, what it is, its box, its unit. */
 .formula-row {
     display: grid;
